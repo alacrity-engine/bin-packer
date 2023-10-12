@@ -17,6 +17,19 @@ var (
 	collectionName   string
 )
 
+// TODO: pack all the files across
+// the project.
+
+// TODO: add resource type identifiers
+// to file names to know what buckets
+// they belong to.
+
+// TODO: create a font atlas packer.
+// An atlas consists of a font texture
+// and a set of frames (one for each character).
+
+// TODO: create a text packer.
+
 func parseFlags() {
 	flag.StringVar(&binPath, "dir", "./res",
 		"Path to the directory where raw files are stored.")
