@@ -2,27 +2,17 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
-	"strings"
 
+	"github.com/golang-collections/collections/queue"
 	bolt "go.etcd.io/bbolt"
 )
 
 var (
-	binPath          string
+	projectPath      string
 	resourceFilePath string
-	collectionName   string
 )
-
-// TODO: pack all the files across
-// the project.
-
-// TODO: add resource type identifiers
-// to file names to know what buckets
-// they belong to.
 
 // TODO: create a font atlas packer.
 // An atlas consists of a font texture
@@ -31,12 +21,10 @@ var (
 // TODO: create a text packer.
 
 func parseFlags() {
-	flag.StringVar(&binPath, "dir", "./res",
-		"Path to the directory where raw files are stored.")
+	flag.StringVar(&projectPath, "project", ".",
+		"Path to the project to pack raw resources for.")
 	flag.StringVar(&resourceFilePath, "out", "./stage.res",
 		"Resource file to store raw binary resources.")
-	flag.StringVar(&collectionName, "collection", "bin",
-		"Collection to store the raw resources from the specified directory.")
 
 	flag.Parse()
 }
@@ -44,49 +32,63 @@ func parseFlags() {
 func main() {
 	parseFlags()
 
-	// Get binaries from the directory.
-	binaries, err := ioutil.ReadDir(binPath)
-	handleError(err)
 	// Open the resource file.
 	resourceFile, err := bolt.Open(resourceFilePath, 0666, nil)
 	handleError(err)
 	defer resourceFile.Close()
 
-	// Create collections for raw binary resources.
-	err = resourceFile.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(collectionName))
-
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
+	entries, err := os.ReadDir(projectPath)
 	handleError(err)
 
-	for _, binaryInfo := range binaries {
-		if binaryInfo.IsDir() {
-			fmt.Println("Error: directory found in the binaries folder.")
-			os.Exit(1)
-		}
+	traverseQueue := queue.New()
 
-		binaryFile, err := os.Open(path.Join(binPath, binaryInfo.Name()))
-		handleError(err)
-		defer binaryFile.Close()
-		binary, err := ioutil.ReadAll(binaryFile)
-		handleError(err)
+	if len(entries) <= 0 {
+		return
+	}
 
-		// Save the binary resource to the database.
-		binaryID := strings.TrimSuffix(path.Base(binaryInfo.Name()),
-			path.Ext(binaryInfo.Name()))
-		err = resourceFile.Update(func(tx *bolt.Tx) error {
-			buck := tx.Bucket([]byte(collectionName))
+	for _, entry := range entries {
+		traverseQueue.Enqueue(FileTracker{
+			EntryPath: projectPath,
+			Entry:     entry,
+		})
+	}
 
-			if buck == nil {
-				return fmt.Errorf("no %s bucket present", collectionName)
+	for traverseQueue.Len() > 0 {
+		fsEntry := traverseQueue.Dequeue().(FileTracker)
+
+		if fsEntry.Entry.IsDir() {
+			entries, err = os.ReadDir(path.Join(fsEntry.EntryPath, fsEntry.Entry.Name()))
+			handleError(err)
+
+			for _, entry := range entries {
+				traverseQueue.Enqueue(FileTracker{
+					EntryPath: path.Join(fsEntry.EntryPath, fsEntry.Entry.Name()),
+					Entry:     entry,
+				})
 			}
 
-			err = buck.Put([]byte(binaryID), binary)
+			continue
+		}
+
+		if !isBinaryResource(fsEntry) {
+			continue
+		}
+
+		binData, err := os.ReadFile(path.Join(
+			fsEntry.EntryPath, fsEntry.Entry.Name()))
+		handleError(err)
+		resBucketName, err := detectResourceBucket(fsEntry)
+		handleError(err)
+		resName := resourceName(fsEntry)
+
+		err = resourceFile.Update(func(tx *bolt.Tx) error {
+			buck, err := tx.CreateBucketIfNotExists([]byte(resBucketName))
+
+			if err != nil {
+				return err
+			}
+
+			err = buck.Put([]byte(resName), binData)
 
 			if err != nil {
 				return err
