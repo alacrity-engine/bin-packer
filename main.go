@@ -14,8 +14,6 @@ var (
 	resourceFilePath string
 )
 
-// TODO: create a text packer.
-
 // TODO: create a custom resource packer
 // that can have arbitrary data (sometimes
 // from a file) and reference other resources.
