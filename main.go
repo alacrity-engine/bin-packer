@@ -14,11 +14,11 @@ var (
 	resourceFilePath string
 )
 
-// TODO: create a font atlas packer.
-// An atlas consists of a font texture
-// and a set of frames (one for each character).
-
 // TODO: create a text packer.
+
+// TODO: create a custom resource packer
+// that can have arbitrary data (sometimes
+// from a file) and reference other resources.
 
 func parseFlags() {
 	flag.StringVar(&projectPath, "project", ".",
